@@ -1,0 +1,6 @@
+langgraph       # For control flow
+langchain       # For LLM interfaces
+langchain-openai # Connection to GPT-4
+ase             # Atomic Simulation Environment (Physics engine)
+numpy           # Math
+scipy           # Optimization algorithms
