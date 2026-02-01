@@ -72,21 +72,36 @@ As the agent runs, it generates two files in real-time:
     optimization_log.csv: A spreadsheet of Energy vs. Step.
 
 Project Structure
-Plaintext
-
-pes-agent-mapper/
-├── agents/
-│   ├── __init__.py
-│   └── optimizer.py       # The "Brain": LLM Logic & Adaptive Step Control
-├── tools/
-│   ├── __init__.py
-│   └── calc_tools.py      # The "Hands": ASE Physics Engine (EMT/DFT)
-├── workflows/
-│   └── graph.py           # The "Manager": LangGraph State Machine
-├── main.py                # Entry point: Logging & Execution
-├── optimization_movie.xyz # Output: Visualization file
-└── optimization_log.csv   # Output: Data file
-
+```
+.
+├── README.md
+├── agents
+├── __init__.py
+│   ├── __pycache__
+│   │   ├── __init__.cpython-311.pyc
+│   │   └── optimizer.cpython-311.pyc
+│   └── optimizer.py
+├── data
+├── main.py
+├── optimization_log.csv
+├── optimization_movie.xyz
+├── requirements.txt
+├── state
+│   ├── __pycache__
+│   │   └── schemas.cpython-311.pyc
+│   └── schemas.py
+├── tools
+│   ├── __init__.py
+│   ├── __pycache__
+│   │   ├── __init__.cpython-311.pyc
+│   │   └── calc_tools.cpython-311.pyc
+│   └── calc_tools.py
+└── workflow
+    ├── __pycache__
+    │   ├── graph.cpython-311.pyc
+    │   └── graph.cpython-313.pyc
+    └── graph.py
+```
 Customization
 Changing the Physics Engine
 
