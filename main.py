@@ -2,10 +2,12 @@
 import os
 from workflow.graph import app
 from tools.calc_tools import calculate_single_point
+from tools.result_plot import pes_plot, plot_3d
+from explore_pes import overall_landscape
 
-# --- 1. SETUP THE "NOTEBOOK" ---
-output_file = "optimization_movie.xyz"
-log_file = "optimization_log.csv"
+# Setting up the output log/xyz
+output_file = "data/optimization_movie.xyz"
+log_file = "data/optimization_log.csv"
 
 # Clear old files so we don't mix up experiments
 with open(output_file, "w") as f:
@@ -13,11 +15,13 @@ with open(output_file, "w") as f:
 with open(log_file, "w") as f:
     f.write("Step,Energy,MaxForce\n")  # CSV Header
 
-# --- 2. INITIALIZE ---
-initial_xyz = """2
-H2 molecule
-H 0.0 0.0 0.0
-H 0.0 0.0 0.8"""
+# Initializing
+initial_xyz ="""3
+H2O molecule
+O          0.00000        0.00000        0.11779
+H          0.00000        0.75545       -0.47116
+H          0.00000       -0.75545       -0.47116
+"""
 
 initial_data = calculate_single_point(initial_xyz)
 
@@ -32,9 +36,13 @@ initial_state = {
 with open(output_file, "a") as f:
     f.write(initial_xyz)
 
+# Writing intiial data
+with open(log_file, "a") as f:
+    f.write(f"0,{initial_data['energy']},{initial_data['max_force']}\n")
+
 print(f"Recording trajectory to: {os.path.abspath(output_file)}")
 
-# --- 3. RUN AND RECORD ---
+# Running Recording
 step_count = 0
 for event in app.stream(initial_state):
     # 'event' contains the dictionary returned by the agent
@@ -54,4 +62,14 @@ for event in app.stream(initial_state):
         with open(log_file, "a") as f:
             f.write(f"{step_count},{e},{f_max}\n")
 
-        print(f"💾 Saved Step {step_count} to disk.")
+        print(f" Saved Step {step_count} to disk.")
+
+print('Starting making PES plot!!')
+pes_plot()
+
+#
+print('Creating the true energy landscape')
+overall_landscape() # creating the dataset
+
+print('Plotting the true energy landscape + explored')
+plot_3d('./data/true_energy.csv','./data/pes_3d_map.csv')
