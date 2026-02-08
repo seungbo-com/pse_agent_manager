@@ -1,22 +1,30 @@
 from ase.io import read
-from ase.calculators.emt import EMT  # Toy potential (fast). SWAP for Gaussian/ORCA later.
+from ase.calculators.emt import EMT
+from ase.calculators.gaussian import Gaussian
 from io import StringIO
 import numpy as np
+from mace.calculators import mace_mp
 
+mace_calc = mace_mp(
+    model='small',
+    dispersion=True,
+    default_dtype="float64",
+    device='cpu',
+)
 
 def calculate_single_point(xyz_data: str):
     """
     Takes an XYZ string, calculates Energy and Forces.
     """
-    # 1. Convert string to ASE Atoms object
+    # Converting string to ASE Atoms object
     xyz_file = StringIO(xyz_data)
     atoms = read(xyz_file, format="xyz")
 
-    # 2. Attach Calculator (The Physics Engine)
+    # Attach Calculator (The Physics Engine)
     # NOTE: For real science, replace EMT() with a DFT calculator
-    atoms.calc = EMT()
+    atoms.calc = mace_calc
 
-    # 3. Calculate
+    # Calculate potential energy / force
     energy = atoms.get_potential_energy()
     forces = atoms.get_forces()
     max_f = np.sqrt((forces ** 2).sum(axis=1).max())  # Max force magnitude
