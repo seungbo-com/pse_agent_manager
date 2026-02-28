@@ -145,3 +145,6 @@ Error: Agent oscillates between two energies
     Cause: The step size is too large for the potential well.
 
     Fix: The code now includes "Adaptive Rejection" logic. Ensure your optimizer.py contains the check: if new_e > current_e: step_size *= 0.5.
+
+
+Check out the [Interactive 3D Agent Trajectory](file:///Users/hongseungbo/Documents/grad_school_project/phd_projects/notebook_files/pse_agent_manager/controller_journey.html)
