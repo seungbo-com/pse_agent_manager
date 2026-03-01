@@ -4,7 +4,7 @@ import pandas as pd
 from ase.io import read, write
 from io import StringIO
 from numpy.linalg import norm
-from state.schemas import MoleculeState
+from state.schemas import MoleculeState, ExplorerState
 from tools.calc_tools import calculate_single_point
 
 # Load the Map
@@ -12,7 +12,6 @@ PES_MAP = pd.read_csv("./data/true_energy.csv")
 TARGET_ROW = PES_MAP.loc[PES_MAP['Energy'].idxmin()]
 TARGET_R = TARGET_ROW['Bond_Length']
 TARGET_THETA = TARGET_ROW['Bond_Angle']
-
 
 def sensor_node(state: MoleculeState) -> dict:
     """
@@ -117,4 +116,64 @@ def actuator_node(state: MoleculeState) -> dict:
     return {
         "xyz_string": out_stream.getvalue(),
         "step_count": state.get('step_count', 0) + 1
+    }
+
+
+def analyzer_node(state: ExplorerState) -> dict:
+
+    new_energy = state['current_energy']
+    memory = state['discovered_minima']
+
+    # Check if this energy matches any previously found minimum
+    is_novel = True
+    for saved_valley in memory:
+        # If energy is within 0.01 eV, we assume we fell into the same valley
+        if abs(new_energy - saved_valley['energy']) < 0.01:
+            is_novel = False
+            break
+
+    # Discovered new local minimum
+    if is_novel:
+        print(f"Discovered new minimum at {new_energy:.3f} eV!")
+        # Add to memory
+        new_record = {"energy": new_energy, "xyz": state['current_xyz']}
+        return {
+            "discovered_minima": memory + [new_record],
+            "frustration": 0,  # Reset frustration
+            "history_log": state['history_log'] + ["Found novel minimum."],
+            "global_step_count":state.get('global_step_count', 0) + 1,
+        }
+
+    # Same minimum found before
+    else:
+        print("Fell into a known valley.")
+        return {
+            "frustration": state.get('frustration', 0) + 1,
+            "history_log": state['history_log'] + ["Trapped in known minimum."]
+        }
+
+
+def perturbation_node(state: ExplorerState) -> dict:
+
+    atoms = read(StringIO(state['current_xyz']),
+                 format="xyz")
+
+
+    current_kick = state.get('kick_strength', 0)
+
+    # 2. The Monte Carlo "Kick"
+    atoms.rattle(stdev=current_kick)
+
+    # 3. Save new geometry back to string
+    out_stream = StringIO()
+    write(out_stream, atoms, format="xyz")
+
+    print("Applied Monte Carlo rattle to escape local minimum.")
+
+    return {
+        "current_xyz": out_stream.getvalue(),
+        'kick_strength': current_kick*1.05,
+        # "local_step_count": 0,  # Reset for the next optimization run
+        "global_step_count": state.get('global_step_count', 0) + 1,
+        "history_log": state['history_log'] + ["Applied 0.5A MC Kick."]
     }

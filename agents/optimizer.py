@@ -5,9 +5,8 @@ from langchain_ollama import ChatOllama
 from langchain_core.messages import SystemMessage, HumanMessage
 from tools.calc_tools import calculate_single_point, update_geometry
 
-# 1. SETUP LLM
+# SETUP LLM
 llm = ChatOllama(model="llama3.1", format="json", temperature=0)
-
 
 def optimizer_agent_node(state):
     # reading the state
@@ -53,8 +52,6 @@ def optimizer_agent_node(state):
     # Create the new geometry TEMPORARILY
     trial_xyz = update_geometry(current_xyz, worst_atom, move_vec.tolist())
     trial_results = calculate_single_point(trial_xyz)
-
-    # --- STEP 4: THE JUDGEMENT (Adaptive Logic) ---
 
     current_e = state['current_energy']
     trial_e = trial_results['energy']
