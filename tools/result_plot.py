@@ -171,13 +171,9 @@ def plot_controller_journey(pes_map_csv, controller_log_csv):
         print(f"Error: Could not find {controller_log_csv}")
         return
 
-
-    # ---------------------------------------------------------
-    # 3. BUILD THE 3D PLOT
-    # ---------------------------------------------------------
     fig = go.Figure()
 
-    # Layer A: The Map Surface
+    # Layer A (Trace 0): The Map Surface
     fig.add_trace(go.Surface(
         z=Z_grid, x=X_grid, y=Y_grid,
         colorscale='Viridis',
@@ -186,54 +182,63 @@ def plot_controller_journey(pes_map_csv, controller_log_csv):
         colorbar=dict(title='Energy (eV)', x=0.8),
         contours_z=dict(show=True, usecolormap=False, highlightcolor="limegreen", project_z=True)
     ))
+    # Layer B (Trace 1): Base trace for the Line
+    fig.add_trace(go.Scatter3d(
+        x=[df_ctrl['r_angstrom'].iloc[0]], y=[df_ctrl['theta_deg'].iloc[0]], z=[df_ctrl['real_energy_ev'].iloc[0]],
+        mode='lines', line=dict(color='white', width=6), name='Controller Path'
+    ))
 
-    for global_id, cycle_data in df_ctrl.groupby('global_step'):
+    # Layer C (Trace 2): Base trace for the Dots
+    fig.add_trace(go.Scatter3d(
+        x=[df_ctrl['r_angstrom'].iloc[0]], y=[df_ctrl['theta_deg'].iloc[0]], z=[df_ctrl['real_energy_ev'].iloc[0]],
+        mode='markers', marker=dict(size=6, color='red'), name='Controller Updates'
+    ))
 
-        # Extract exactly what the Controller logged
-        # global_step = df_ctrl['global_step'].values
+    frames = []
+
+    for i in range(1, len(df_ctrl)):
+        cycle_data = df_ctrl[:i]
         X_a = cycle_data['r_angstrom'].values
         Y_a = cycle_data['theta_deg'].values
-        Z_a = cycle_data['real_energy_ev'].values  # Using REAL energy for the sanity check
+        Z_a = cycle_data['real_energy_ev'].values
         steps = cycle_data['Step'].values
 
-        # Layer B: The Controller Path (Line)
-        fig.add_trace(go.Scatter3d(
-            x=X_a,
-            y=Y_a,
-            z=Z_a,
-            mode='lines',
-            line=dict(color='white', width=6),
-            name='Controller Path'
-        ))
+        frame = go.Frame(
+            data=[
+                # Updates Trace 1 (The Line)
+                go.Scatter3d(x=X_a, y=Y_a, z=Z_a),
 
-        # Layer C: The Controller Steps (Dots)
-        fig.add_trace(go.Scatter3d(
-            x=X_a,
-            y=Y_a,
-            z=Z_a,
-            mode='markers',
-            marker=dict(size=6, color=steps, colorscale='Hot', showscale=False),
-            text=[f"Step {global_id}-{s}<br>r={r:.3f} Å<br>θ={t:.1f}°<br>E={e:.3f} eV"
-                  for s, r, t, e in zip(steps, X_a, Y_a, Z_a)],
-            hoverinfo='text',
-            name='Controller Updates'
-        ))
+                # Updates Trace 2 (The Dots)
+                go.Scatter3d(
+                    x=X_a, y=Y_a, z=Z_a,
+                    marker=dict(size=6, color=steps, colorscale='Hot', showscale=False),
+                    text=[f"Step {s}<br>r={r:.3f} Å<br>θ={t:.1f}°<br>E={e:.3f} eV"
+                          for s, r, t, e in zip(steps, X_a, Y_a, Z_a)],
+                    hoverinfo='text'
+                )
+            ],
+            traces=[1, 2],
+            name=f"frame_{i}"
+        )
+        frames.append(frame)
 
-        # Layer D: Start & End Markers
-        fig.add_trace(go.Scatter3d(
-            x=[X_a[0]],
-            y=[Y_a[0]],
-            z=[Z_a[0]],
-            mode='markers', marker=dict(size=12, color='lime', symbol='diamond'),
-            name='Start Point'
-        ))
-        fig.add_trace(go.Scatter3d(
-            x=[X_a[-1]],
-            y=[Y_a[-1]],
-            z=[Z_a[-1]],
-            mode='markers', marker=dict(size=12, color='red', symbol='cross'),
-            name='Final Geometry'
-        ))
+    fig.frames = frames
+
+    # # Layer D: Start & End Markers
+    # fig.add_trace(go.Scatter3d(
+    #     x=[X_a[0]],
+    #     y=[Y_a[0]],
+    #     z=[Z_a[0]],
+    #     mode='markers', marker=dict(size=12, color='lime', symbol='diamond'),
+    #     name='Start Point'
+    # ))
+    # fig.add_trace(go.Scatter3d(
+    #     x=[X_a[-1]],
+    #     y=[Y_a[-1]],
+    #     z=[Z_a[-1]],
+    #     mode='markers', marker=dict(size=12, color='red', symbol='cross'),
+    #     name='Final Geometry'
+    # ))
 
     # Format the View
     fig.update_layout(
@@ -248,6 +253,36 @@ def plot_controller_journey(pes_map_csv, controller_log_csv):
         template='plotly_dark'
     )
 
+    fig.update_layout(
+        showlegend=False,
+        title="Agentic PES Exploration Movie",
+        updatemenus=[dict(
+            type="buttons",
+            showactive=False,
+            x=0.1, y=0.9,  # Position on the screen
+            buttons=[
+                dict(
+                    label="Play",
+                    method="animate",
+                    args=[None, {
+                        "frame": {"duration": 50, "redraw": True},  # 50ms per frame
+                        "fromcurrent": True,
+                        "transition": {"duration": 0}  # 0 transition stops it from smearing
+                    }]
+                ),
+                dict(
+                    label="Pause",
+                    method="animate",
+                    args=[[None], {
+                        "frame": {"duration": 0, "redraw": False},
+                        "mode": "immediate",
+                        "transition": {"duration": 0}
+                    }]
+                )
+            ]
+        )]
+    )
+
     output_html = "controller_journey.html"
     fig.write_html(output_html)
     print(f"Controller Journey plot saved to '{os.path.abspath(output_html)}'")
@@ -255,149 +290,116 @@ def plot_controller_journey(pes_map_csv, controller_log_csv):
     # Auto-open in browser
     webbrowser.open(f"file://{os.path.abspath(output_html)}")
 
+def plot_2d_pes(pes_map_csv, controller_log_csv):
+
+    # Loading the landscape
+    print(f"Loading PES Map from {pes_map_csv}...")
+    try:
+        df_map = pd.read_csv(pes_map_csv)
+    except FileNotFoundError:
+        print(f"Error: Could not find {pes_map_csv}")
+        return
+
+    # Pivot map data for Plotly (Angle must be index/rows, Length must be columns)
+    pivot = df_map.pivot(index='Bond_Angle',
+                         columns='Bond_Length',
+                         values='Energy')
+    X_grid = pivot.columns.values # 1D Array of Lengths (r)
+    Y_grid = pivot.index.values   # 1D Array of Angles (theta)
+    Z_grid = pivot.values         # 2D Matrix of Energies
+
+    print(f"Loading Controller Trajectory from {controller_log_csv}...")
+    try:
+        df_ctrl = pd.read_csv(controller_log_csv)
+    except FileNotFoundError:
+        print(f"Error: Could not find {controller_log_csv}")
+        return
 
 
-# def plot_3d(csv_file, csv_file_agent):
-#
-#     '''
-#     Plotting 3D surface plot
-#
-#     :param
-#         df - Pandas DataFrame from collected data
-#         df_agent - Pandas DataFrame of agentic automatic exploration
-#
-#     :return: Saving into png file.
-#     '''
-#
-#     try:
-#         df = pd.read_csv(csv_file)
-#     except FileNotFoundError:
-#         print(f" Error: Could not find {csv_file}.")
-#         return
-#
-#     try:
-#         df_agent = pd.read_csv(csv_file_agent)
-#     except FileNotFoundError:
-#         print(f" Error: Could not find {csv_file_agent}.")
-#         return
-#
-#     X_a = df_agent['Bond_Length'].values
-#     Y_a = df_agent['Bond_Angle'].values
-#     Z_a = df_agent['Energy'].values
-#
-#     pivot = df.pivot(index='Bond_Length',
-#                     columns='Bond_Angle',
-#                     values='Energy')
-#
-#     X_grid, Y_grid = np.meshgrid(pivot.index, pivot.columns)
-#     Z_grid = pivot.values  # Height = Energy
-#     steps = np.arange(X_grid.shape[0])
-#     fig = go.Figure()
-#
-#     # Layer A: The Surface
-#     fig.add_trace(go.Surface(
-#         z=Z_grid, x=X_grid, y=Y_grid,
-#         # surfacecolor=Z_grid,  # <--- THIS ADDS THE 4TH DIMENSION
-#         colorscale='Viridis',
-#         opacity=0.8,
-#         name='PES',
-#         colorbar=dict(title='Energy (eV)', x=0.8),  # Colorbar for the Surface
-#         contours_z=dict(show=True,
-#                         usecolormap=False,
-#                         highlightcolor="limegreen",
-#                         project_z=True)
-#     ))
-#
-#     # Layer B: The Agent Path (Line)
-#     fig.add_trace(go.Scatter3d(
-#         x=X_a, y=Y_a, z=Z_a,
-#         mode='lines',
-#         line=dict(color='white', width=5),
-#         name='Agent Path'
-#     ))
-#
-#     # Layer C: The Agent Steps (Dots)
-#     fig.add_trace(go.Scatter3d(
-#         x=X_a, y=Y_a, z=Z_a,
-#         mode='markers',
-#         marker=dict(
-#             size=5,
-#             color=steps,
-#             colorscale='Hot',
-#             showscale=False
-#         ),
-#         text=[f"Step {s}<br>r1={1:.3f}<br><br>θ={t:.1f}<br>Pot E={e:.3f}"  for s, r, t, e in zip(steps, X_a, Y_a, Z_a)],
-#         hoverinfo='text',
-#         name='Optimization Steps'
-#     ))
-#
-#     # Layer D: Start & End Markers
-#     fig.add_trace(go.Scatter3d(
-#         x=[X_a[0]], y=[Y_a[0]], z=[Z_a[0]],
-#         mode='markers', marker=dict(size=10, color='lime', symbol='diamond'),
-#         name='Start'
-#     ))
-#     fig.add_trace(go.Scatter3d(
-#         x=[X_a[-1]], y=[Y_a[-1]], z=[Z_a[-1]],
-#         mode='markers', marker=dict(size=10, color='red', symbol='cross'),
-#         name='End'
-#     ))
-#
-#     fig.update_layout(
-#         title='Interactive Agent Optimization on PES',
-#         scene=dict(
-#             xaxis_title='Bond Length (H1-O) (Å)',
-#             yaxis_title='Bond Angle (Deg)',
-#             zaxis_title='Energy (eV)',
-#             camera=dict(eye=dict(x=1.5, y=1.5, z=1.2))  # Initial View Angle
-#         ),
-#         width=1200, height=800,
-#         template='plotly_dark'  # Makes the colors pop
-#     )
-#
-#     output_html = "interactive_pes.html"
-#     # Save and Show
-#     fig.write_html(output_html)
-#     print(f"Interactive plot saved to '{output_html}'")
-#
-#     # Try to open automatically in browser
-#     webbrowser.open(output_html)
-#
-#     # fig = plt.figure(figsize=(12, 8))
-#     # ax = fig.add_subplot(111, projection='3d')
-#     # # Plot the Surface
-#     # surf = ax.plot_surface(X_grid, Y_grid, Z_grid,
-#     #                        cmap=cm.viridis,
-#     #                        linewidth=0,
-#     #                        antialiased=False,
-#     #                        alpha=0.8)
-#     #
-#     # # Start Point (Green)
-#     # ax.scatter(X_gridA[0], Y_gridA[0], Z_gridA[0],
-#     #            color='lime', s=100, edgecolors='k', label='Start', zorder=11)
-#     # # End Point (Red Star)
-#     # ax.scatter(X_gridA[-1], Y_gridA[-1], Z_gridA[-1],
-#     #            color='red', marker='*', s=200, edgecolors='k', label='End',zorder=11)
-#     # # Intermediate Steps (Black dots)
-#     # ax.scatter(X_gridA[1:-1], Y_gridA[1:-1], Z_gridA[1:-1],
-#     #            color='black', s=20, zorder=11)
-#     #
-#     #
-#     # # Add Contour (Floor projection) to see the "Map"
-#     # ax.contour(X_grid, Y_grid, Z_grid,
-#     #            zdir='z',
-#     #            offset=Z_grid.min(),
-#     #            cmap=cm.viridis)
-#     #
-#     # # Labels
-#     # ax.set_xlabel('Bond Length (Å)')
-#     # ax.set_ylabel('Bond Angle (Degrees)')
-#     # ax.set_zlabel('Potential Energy (eV)')
-#     # ax.set_title('Water Molecule Potential Energy Surface')
-#     #
-#     # # Colorbar
-#     # fig.colorbar(surf, shrink=0.5, aspect=5, label='Energy (eV)')
-#     #
-#     # plt.savefig("pes_3d_plot.png", dpi=300)
-#     # print("3D Plot saved to 'pes_3d_plot.png'")
-#     # plt.show()
+    fig = go.Figure()
+
+    # Layer A (Trace 0): The 2D Contour Map
+    fig.add_trace(go.Contour(
+        z=Z_grid, x=X_grid, y=Y_grid,
+        colorscale='Viridis',
+        name='PES Landscape',
+        colorbar=dict(title='Energy (eV)'),
+        contours=dict(showlines=True)  # Shows the topological elevation lines
+    ))
+
+    fig.add_trace(go.Scatter(
+        x=[df_ctrl['r_angstrom'].iloc[0]],
+        y=[df_ctrl['theta_deg'].iloc[0]],
+        mode='lines',
+        line=dict(color='white', width=4),
+        name='Agent Path'
+    ))
+
+    fig.add_trace(go.Scatter(
+        x=[df_ctrl['r_angstrom'].iloc[0]],
+        y=[df_ctrl['theta_deg'].iloc[0]],
+        mode='markers',
+        marker=dict(size=8, color='red', line=dict(width=1, color='black')),
+        name='Updates'
+    ))
+
+    # 4. BUILD THE MOVIE FRAMES
+    print("Generating 2D movie frames...")
+    frames = []
+
+    # Skip frames if the dataframe is huge so it doesn't crash the browser
+    skip_rate = 2 if len(df_ctrl) > 500 else 1
+
+    for i in range(1, len(df_ctrl), skip_rate):
+        cycle_data = df_ctrl[:i]
+        X_a = cycle_data['r_angstrom'].values
+        Y_a = cycle_data['theta_deg'].values
+        Z_a = cycle_data['real_energy_ev'].values
+        steps = cycle_data['Step'].values
+
+        frame = go.Frame(
+            data=[
+                # Updates Trace 1 (2D Line)
+                go.Scatter(x=X_a, y=Y_a),
+
+                # Updates Trace 2 (2D Dots)
+                go.Scatter(
+                    x=X_a, y=Y_a,
+                    marker=dict(size=8, color=steps, colorscale='Hot', showscale=False),
+                    text=[f"Step {s}<br>r={r:.3f} Å<br>θ={t:.1f}°<br>E={e:.3f} eV"
+                          for s, r, t, e in zip(steps, X_a, Y_a, Z_a)]
+                )
+            ],
+            traces=[1, 2],  # <--- Tells Plotly to only animate the Line and Dots, not the map
+            name=f"frame_{i}"
+        )
+        frames.append(frame)
+
+    fig.frames = frames
+
+    fig.update_layout(
+        showlegend=False,
+        title="2D Agentic PES Exploration Movie",
+        xaxis=dict(title='Bond Length (H-O) (Å)', range=[X_grid.min(), X_grid.max()]),
+        yaxis=dict(title='Bond Angle (H-O-H) (Deg)', range=[Y_grid.min(), Y_grid.max()]),
+        # xaxis_title='Bond Length (H-O) (Å)',
+        # yaxis_title='Bond Angle (H-O-H) (Deg)',
+        width=1000, height=800,
+        template='plotly_dark',
+        updatemenus=[dict(
+            type="buttons", showactive=False, x=0.1, y=1.05,
+            buttons=[
+                dict(label="Play", method="animate",
+                     args=[None, {"frame": {"duration": 50, "redraw": False}, "fromcurrent": True,
+                                  "transition": {"duration": 0}}]),
+                dict(label="Pause", method="animate",
+                     args=[[None], {"frame": {"duration": 0, "redraw": False}, "mode": "immediate",
+                                    "transition": {"duration": 0}}])
+            ]
+        )]
+    )
+
+    output_html = "controller_journey_2d.html"
+    fig.write_html(output_html)
+    print(f"✅ 2D Controller Journey plot saved to '{os.path.abspath(output_html)}'")
+    webbrowser.open(f"file://{os.path.abspath(output_html)}")

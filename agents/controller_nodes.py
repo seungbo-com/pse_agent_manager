@@ -6,6 +6,9 @@ from io import StringIO
 from numpy.linalg import norm
 from state.schemas import MoleculeState, ExplorerState
 from tools.calc_tools import calculate_single_point
+import json
+from langchain_ollama import ChatOllama
+from langchain_core.messages import SystemMessage, HumanMessage
 
 # Load the Map
 PES_MAP = pd.read_csv("./data/true_energy.csv")
@@ -118,41 +121,76 @@ def actuator_node(state: MoleculeState) -> dict:
         "step_count": state.get('step_count', 0) + 1
     }
 
+# SETUP LLM FOR THE OUTER GRAPH
+supervisor_llm = ChatOllama(model="llama3.1", format="json", temperature=0)
+
 
 def analyzer_node(state: ExplorerState) -> dict:
+    print("\n[SUPERVISOR] LLM is evaluating the landscape...")
 
-    new_energy = state['current_energy']
-    memory = state['discovered_minima']
-
-    # Check if this energy matches any previously found minimum
-    is_novel = True
-    for saved_valley in memory:
-        # If energy is within 0.01 eV, we assume we fell into the same valley
-        if abs(new_energy - saved_valley['energy']) < 0.01:
-            is_novel = False
+    current_e = state.get('current_energy', 0.0)
+    current_xyz = state.get('current_xyz', '')
+    current_frustration = state.get('frustration', 0)
+    discovered_valleys = len(state.get('discovered_minima', []))
+    history = "\n".join(
+        state.get('history_log', [])[-3:])
+    minima_list = state.get('discovered_minima', [])
+    is_new_valley = True
+    for m in minima_list:
+        # If the energy is within 0.01 eV of a known valley, it's a duplicate!
+        if abs(m['energy'] - current_e) < 0.01:
+            is_new_valley = False
             break
 
-    # Discovered new local minimum
-    if is_novel:
-        print(f"Discovered new minimum at {new_energy:.3f} eV!")
-        # Add to memory
-        new_record = {"energy": new_energy, "xyz": state['current_xyz']}
-        return {
-            "discovered_minima": memory + [new_record],
-            "frustration": 0,  # Reset frustration
-            "history_log": state['history_log'] + ["Found novel minimum."],
-            "global_step_count":state.get('global_step_count', 0) + 1,
-        }
-
-    # Same minimum found before
+    if is_new_valley:
+        # Catalog the new discovery!
+        minima_list.append({"energy": current_e, "xyz": current_xyz})
+        calculated_frustration = 0  # Reset frustration
+        print(f" MEMORY: New valley discovered at {current_e:.4f} eV! Cataloging...")
     else:
-        print("Fell into a known valley.")
-        return {
-            "frustration": state.get('frustration', 0) + 1,
-            "history_log": state['history_log'] + ["Trapped in known minimum."]
-        }
+        calculated_frustration = current_frustration + 1
+        print(f"MEMORY: Trapped in known valley. Frustration rising to {calculated_frustration}/3.")
 
 
+    system_prompt = """You are an expert computational chemist AI supervising a geometry optimization engine.
+The physics engine has just completed a local optimization and reached a local minimum on the Potential Energy Surface (PES).
+
+Your job is to analyze the state and return a strictly formatted JSON object dictating the next macro-level action.
+
+JSON Output Schema:
+{
+    "frustration_update": int,  // Add 1 to current frustration if stuck, or reset to 0 if this is a brand new valley.
+    "recommended_kick": float,  // A suggested Monte Carlo kick strength in Angstroms (e.g., 0.5 to 1.5).
+    "reasoning": str            // A brief, 1-sentence log of your thought process.
+}"""
+
+    human_prompt = f"Current Frustration: {calculated_frustration}. Total Unique Valleys: {len(minima_list)}. Generate JSON."
+
+    try:
+        # Invoke Ollama
+        messages = [SystemMessage(content=system_prompt), HumanMessage(content=human_prompt)]
+        response = supervisor_llm.invoke(messages)
+
+        # Parse Decision
+        decision = json.loads(response.content)
+        new_kick = decision.get("recommended_kick", 0.5)
+        thought_log = decision.get("reasoning", "LLM decided to proceed.")
+
+    except Exception as e:
+        print(f"LLM Error: {e}. Defaulting to safe values.")
+        new_kick = 0.5 + (calculated_frustration * 0.2)  # Mathematical fallback
+        thought_log = "Fallback due to LLM timeout/error."
+
+    print(f"Supervisor Thought: {thought_log}")
+    print(f"Recommended Kick: {new_kick} Å")
+
+    # --- 3. Return the fully updated state ---
+    return {
+        "discovered_minima": minima_list,  # Ensure memory is saved!
+        "frustration": calculated_frustration,
+        "kick_strength": new_kick,
+        "history_log": state.get('history_log', []) + [f"Supervisor: {thought_log}"]
+    }
 def perturbation_node(state: ExplorerState) -> dict:
 
     atoms = read(StringIO(state['current_xyz']),
@@ -172,7 +210,7 @@ def perturbation_node(state: ExplorerState) -> dict:
 
     return {
         "current_xyz": out_stream.getvalue(),
-        'kick_strength': current_kick*1.05,
+        'kick_strength': current_kick * 1.01,
         # "local_step_count": 0,  # Reset for the next optimization run
         "global_step_count": state.get('global_step_count', 0) + 1,
         "history_log": state['history_log'] + ["Applied 0.5A MC Kick."]

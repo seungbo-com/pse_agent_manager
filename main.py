@@ -2,7 +2,7 @@
 import os
 from workflow.graph import master_app
 from tools.calc_tools import calculate_single_point,get_bad_water_xyz
-from tools.result_plot import plot_controller_journey
+from tools.result_plot import plot_controller_journey, plot_2d_pes
 from explore_pes import overall_landscape
 from state.schemas import MoleculeState
 # Setting up the output log/xyz
@@ -26,10 +26,10 @@ with open(log_file, "w") as f:
 
 print('Creating the true energy landscape')
 overall_landscape(
-    r_min=0.85,
-    r_max=1.25,
-    theta_min=100,
-    theta_max=130,
+    r_min=0.65,
+    r_max=2.25,
+    theta_min=60,
+    theta_max=150,
     lin_space=50,
 ) # creating the dataset
 
@@ -74,69 +74,9 @@ for event in master_app.stream(initial_explorer_state):
 
     if node_name == 'apply_kick':
         print(f'Agent Applying Kick: New Strength {event[node_name].get("kick_strength"):.2f}')
-# # --- Initialize Local Tracker ---
-# tracked_state = dict(initial_state)
-# # print("Starting Map-Guided Optimization Loop...")
-# # --- Running Recording ---
-# for event in master_app.stream(initial_state):
-#
-#     # LangGraph yields a dictionary like: {'sensor': {'current_r': 1.0, ...}}
-#     node_name = list(event.keys())[0]
-#     node_data = event[node_name]
-#
-#     # Update our local tracker with whatever this specific node just changed
-#     tracked_state.update(node_data)
-#
-#     if node_name == 'comparator':
-#         step_count = tracked_state.get('step_count', 0)
-#         # Extract the metrics
-#         xyz = tracked_state['xyz_string']
-#         r = tracked_state['current_r']
-#         theta = tracked_state['current_theta']
-#         e_real = tracked_state['current_energy']
-#         e_map = tracked_state['expected_energy']
-#         err_r = tracked_state['error_r']
-#         err_theta = tracked_state['error_theta']
-#
-#         # Save the Geometry (The Structure)
-#         with open(output_file, "a") as f:
-#             # Ensure there's a newline between XYZ blocks
-#             f.write(xyz.strip() + "\n")
-#
-#             # Save the Numbers (The Data)
-#         with open(log_file, "a") as f:
-#             f.write(f"{step_count},{r:.4f},{theta:.2f},{e_real:.6f},{e_map:.6f},{err_r:.4f},{err_theta:.2f}\n")
-#
-#         print(f"Logged Step {step_count} to disk.")
 
-# # Running Recording
-# step_count = 0
-# for event in app.stream(initial_state):
-#     # 'event' contains the dictionary returned by the agent
-#     data = event.get('agent')  # 'agent' is the name of your node
-#
-#     if data and 'xyz_string' in data:
-#         step_count += 1
-#
-#         # A. Save the Geometry (The Structure)
-#         with open(output_file, "a") as f:
-#             f.write(data['xyz_string'])
-#
-#         # B. Save the Numbers (The Data)
-#         e = data.get('current_energy', 0)
-#         f_max = data.get('max_force', 0)
-#
-#         with open(log_file, "a") as f:
-#             f.write(f"{step_count},{e},{f_max}\n")
-#
-#         print(f" Saved Step {step_count} to disk.")
-
-# print('Starting making PES plot!!')
-# pes_plot()
-#
-# print('Creating the true energy landscape')
-# overall_landscape() # creating the dataset
 
 print('Plotting the true energy landscape + explored')
 plot_controller_journey("data/true_energy.csv", log_file)
+plot_2d_pes("data/true_energy.csv", log_file)
 # plot_3d('./data/true_energy.csv','./data/pes_3d_map.csv')
